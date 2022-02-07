@@ -41,6 +41,9 @@ class JWKABC(ABC):
 
 class JWK(JWKABC):
     def __init__(self, private_key: ec.EllipticCurvePrivateKey):
+        if not isinstance(private_key.curve, ec.SECP256R1):
+            raise TypeError("Not P-256 elliptic curve")
+
         self.private_key = private_key
 
     @property
