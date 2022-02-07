@@ -30,45 +30,7 @@ class JWKABC(ABC):
     def sign(self, data: bytes) -> bytes:
         pass
 
-    @abstractmethod
-    def thumbprint(self) -> bytes:
-        pass
-
-    @abstractmethod
     def export(self) -> dict:
-        pass
-
-
-class JWK(JWKABC):
-    def __init__(self, private_key: ec.EllipticCurvePrivateKey):
-        if not isinstance(private_key.curve, ec.SECP256R1):
-            raise TypeError("Not P-256 elliptic curve")
-
-        self.private_key = private_key
-
-    @property
-    def payload(self) -> ThumbPrintDict:
-        x, y = map(
-            methodcaller("decode", "utf-8"),
-            map(
-                urlsafe_b64encode,
-                map(
-                    methodcaller("to_bytes", 32, "big"),
-                    attrgetter("x", "y")(
-                        self.private_key.public_key().public_numbers()
-                    ),
-                ),
-            ),
-        )
-
-        return {
-            "crv": "P-256",
-            "kty": "EC",
-            "x": x,
-            "y": y,
-        }
-
-    def export(self):
         return {
             **self.payload,
             "kid": self.thumbprint(),
@@ -81,6 +43,39 @@ class JWK(JWKABC):
         h.update(json_encoder.encode(self.payload).encode())
         return urlsafe_b64encode(h.digest()).decode("utf-8")
 
+
+class JWK(JWKABC):
+    def __init__(self, private_key: ec.EllipticCurvePrivateKey):
+        if not isinstance(private_key.curve, ec.SECP256R1):
+            raise TypeError("Not P-256 elliptic curve")
+
+        self.private_key = private_key
+
+    @property
+    def _public_key(self) -> ec.EllipticCurvePublicKey:
+        return self.private_key.public_key()
+
+    @property
+    def payload(self) -> ThumbPrintDict:
+        print("yay")
+        x, y = map(
+            methodcaller("decode", "utf-8"),
+            map(
+                urlsafe_b64encode,
+                map(
+                    methodcaller("to_bytes", 32, "big"),
+                    attrgetter("x", "y")(self._public_key.public_numbers()),
+                ),
+            ),
+        )
+
+        return {
+            "crv": "P-256",
+            "kty": "EC",
+            "x": x,
+            "y": y,
+        }
+
     def sign(self, data: bytes) -> bytes:
         return b"".join(
             map(
@@ -90,9 +85,6 @@ class JWK(JWKABC):
                 ),
             )
         )
-
-    def verify(self, signature: bytes, data: bytes):
-        self.private_key.public_key().verify(signature, data, ec.ECDSA(hashes.SHA256()))
 
 
 class SmartHealthCard:
@@ -129,11 +121,12 @@ class SmartHealthCard:
             + self._b64encode(self._compressed_payload())
         )
 
-    def _signature(self) -> bytes:
-        return self._b64encode(self.jwk.sign(self._body()))
+    def _signature(self, body: bytes) -> bytes:
+        return self._b64encode(self.jwk.sign(body))
 
     def __bytes__(self):
-        return self._body() + b"." + self._signature()
+        body = self._body()
+        return body + b"." + self._signature(body)
 
     def __str__(self):
         return self.__bytes__().decode("utf-8")

@@ -2,3 +2,4 @@ __pycache__/
 dist/
 smarthealthcard.egg-info/
 status/
+.tox/
